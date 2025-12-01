@@ -1,0 +1,5 @@
+await fetch("https://script.google.com/macros/s/AKfycbxckCv3AMVvm5fOeScVZJRkAdBULESzpLmASIBjS_SXXu1Fgq7qyaiW1Mi8rGl1qYX-Gw/exec", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  })
+});
