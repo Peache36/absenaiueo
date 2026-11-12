@@ -1,0 +1,10 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+
+/index.html
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache
