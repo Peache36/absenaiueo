@@ -15,7 +15,7 @@
 @media(prefers-color-scheme:dark){:root{--bg:#12141a;--card:#1c1f27;--tx:#eceef3;--mu:#9aa1b0;--bd:#2c303b;--pr:#6c86ff;--prtx:#0c1020;--ok:#4fd18b;--okbg:#14301f;--wn:#f2b45c;--wnbg:#35290f;--er:#ff7b80;--erbg:#3a1618}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
-#app{max-width:680px;margin:0 auto;min-height:100vh;padding-bottom:32px}
+#app{max-width:680px;margin:0 auto;min-height:100vh;padding-bottom:120px}
 header{padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
 main{padding:0 12px}
 h1{font-size:22px;margin:0 0 4px}h3{margin:0 0 12px}
@@ -55,10 +55,9 @@ tr.click{cursor:pointer}td.n,th.n{text-align:right}
 nav{position:sticky;top:0;z-index:5;display:flex;background:var(--card);border:1px solid var(--bd);border-radius:12px;margin:0 12px 12px;overflow:hidden}
 nav button{flex:1;padding:14px 4px;border:0;background:transparent;color:var(--mu);font:inherit;font-size:13px;font-weight:600}
 nav button.on{color:var(--pr);box-shadow:inset 0 -3px 0 var(--pr)}
-.ovl{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
-.mdl{background:var(--card);width:100%;max-width:520px;max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px}
-@media(min-width:600px){.ovl{align-items:center}.mdl{border-radius:18px}}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;z-index:30;max-width:90%;display:none}
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:20;padding:6vh 12px 0;overflow:auto}
+.mdl{background:var(--card);width:100%;max-width:520px;border-radius:18px;padding:18px;margin-bottom:24px}
+#toast{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;z-index:30;max-width:90%;display:none}
 .pw{position:relative;display:block}.pw input{padding-right:84px}
 .eye{position:absolute;right:6px;top:calc(50% + 2px);transform:translateY(-50%);border:0;background:transparent;color:var(--pr);font:inherit;font-size:13px;font-weight:600;padding:8px;cursor:pointer}
 [hidden]{display:none!important}
@@ -81,19 +80,48 @@ const S = {token:null,me:null,offset:0,tab:'absen',tick:null,forceAlasan:false,h
 const $ = (s,r=document)=>r.querySelector(s);
 const esc = s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// >>> ISI dengan URL Web App Apps Script Anda (berakhiran /exec) <<<
-const API_URL='https://script.google.com/macros/s/AKfycbzhMiDG1XZm5B9uVGCoqlb4LoPA1uWMCcKTtuWtHXUAe6ptw0UzlbVfe5otPgzOSzmK6A/exec';
+// >>> ISI dengan data proyek Supabase Anda (Project Settings -> API) <<<
+const SUPABASE_URL='https://bmlkgafjkiahmphzikpr.supabase.co';
+const SUPABASE_KEY='sb_publishable_E_PapXp_ePC1-QH3vvbfaQ_MpOGvcOd'; // kunci publik (anon / publishable), BUKAN service_role
+
+// nama fungsi di sini -> [fungsi SQL, ...nama parameter SQL sesuai urutan argumen]
+const RPC={
+  api_login:['api_login','p_username','p_password','p_remember'],
+  api_logout:['api_logout','p_token'],
+  api_me:['api_me','p_token'],
+  api_clockIn:['api_clock_in','p_token','p_alasan'],
+  api_clockOut:['api_clock_out','p_token'],
+  api_history:['api_history','p_token','p_month'],
+  api_changePassword:['api_change_password','p_token','p_old','p_new'],
+  api_adminDaily:['api_admin_daily','p_token','p_date'],
+  api_adminMonthly:['api_admin_monthly','p_token','p_month','p_shift'],
+  api_adminDetail:['api_admin_detail','p_token','p_id','p_month'],
+  api_adminEmployees:['api_admin_employees','p_token'],
+  api_adminSaveEmployee:['api_admin_save_employee','p_token','p'],
+  api_adminResetPassword:['api_admin_reset_password','p_token','p_id','p_pass'],
+  api_adminCorrect:['api_admin_correct','p_token','p'],
+  api_adminMonthRecords:['api_admin_month_records','p_token','p_month','p_id']
+};
+const ERRCODE={AB001:'AUTH',AB002:'ALASAN',AB004:'FORBID'};
 
 async function call(fn,...args){
-  if(API_URL.indexOf('GANTI')===0) throw {error:'API_URL belum diisi di index.html.',code:'CONFIG'};
-  let r;
+  if(SUPABASE_URL.indexOf('GANTI')===0||SUPABASE_KEY.indexOf('GANTI')===0)
+    throw {error:'SUPABASE_URL / SUPABASE_KEY belum diisi di index.html.',code:'CONFIG'};
+  const def=RPC[fn], body={};
+  def.slice(1).forEach((k,i)=>{ if(args[i]!==undefined) body[k]=args[i]; });
+  const headers={'Content-Type':'application/json',apikey:SUPABASE_KEY};
+  if(SUPABASE_KEY.indexOf('eyJ')===0) headers.Authorization='Bearer '+SUPABASE_KEY; // kunci anon versi JWT
+  let res,data;
   try{
-    // text/plain = "simple request": tidak memicu preflight CORS yang tidak didukung Apps Script
-    const res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn:fn,args:args})});
-    r=await res.json();
+    res=await fetch(SUPABASE_URL.replace(/\/+$/,'')+'/rest/v1/rpc/'+def[0],{method:'POST',headers:headers,body:JSON.stringify(body)});
+    data=await res.json();
   }catch(e){ throw {error:'Koneksi gagal. Periksa internet Anda.',code:'NET'}; }
-  if(r&&r.ok) return r.data;
-  throw r||{error:'Tidak ada respons dari server.'};
+  if(!res.ok){
+    if(data&&data.code==='PGRST202') throw {error:'Fungsi database belum dibuat. Jalankan supabase.sql di SQL Editor.',code:'CONFIG'};
+    throw {error:(data&&data.message)||'Terjadi kesalahan pada server.',code:ERRCODE[data&&data.code]||''};
+  }
+  if(data&&data.ok===false) throw {error:data.error,code:data.code||''};
+  return data;
 }
 function api(fn,...a){
   return call(fn,S.token,...a).catch(e=>{ if(e&&e.code==='AUTH') authLost(e.error); throw e; });
@@ -334,7 +362,7 @@ function viewRekap(){
     $('#rctl').innerHTML=`<div class="card"><div class="grid2"><label>Tanggal<input type="date" id="rd" value="${esc(R.date)}"></label>
     <label>Status<select id="rst"><option value="">Semua</option><option>Belum Absen</option><option>Belum Pulang</option><option>Selesai</option><option value="Telat">Telat</option></select></label></div>
     <label style="margin:0">Cari nama<input id="rq" value="${esc(R.q)}" placeholder="Ketik nama…"></label>
-    <div class="row l"><button class="btn xs" data-exp="csv">Export CSV</button><button class="btn xs" data-exp="sheet">Export Sheet</button></div></div>`;
+    <div class="row l"><button class="btn xs" data-exp="harian">Export CSV</button></div></div>`;
     $('#rst').value=R.st;
     $('#rd').onchange=e=>{R.date=e.target.value||today();loadDaily();};
     $('#rst').onchange=e=>{R.st=e.target.value;renderDaily();};
@@ -344,18 +372,13 @@ function viewRekap(){
     $('#rctl').innerHTML=`<div class="card"><div class="grid2"><label>Bulan<input type="month" id="rm" value="${esc(R.month)}"></label>
     <label>Shift<select id="rs">${shiftOpts(R.shift,S.monthly&&S.monthly.shifts)}</select></label></div>
     <label style="margin:0">Cari nama<input id="rq" value="${esc(R.q)}" placeholder="Ketik nama…"></label>
-    <div class="row l"><button class="btn xs" data-exp="csv">Export Rekap CSV</button><button class="btn xs" data-exp="sheet">Export Rekap Sheet</button>
-    <button class="btn xs" data-exp="csv-detail">Detail CSV</button><button class="btn xs" data-exp="sheet-detail">Detail Sheet</button></div></div>`;
+    <div class="row l"><button class="btn xs" data-exp="bulanan">Rekap CSV</button><button class="btn xs" data-exp="detail-all">Detail CSV</button></div></div>`;
     $('#rm').onchange=e=>{R.month=e.target.value||curMonth();loadMonthly();};
     $('#rs').onchange=e=>{R.shift=e.target.value;loadMonthly();};
     $('#rq').oninput=e=>{R.q=e.target.value;renderMonthly();};
     loadMonthly();
   }
-  $('#rctl').onclick=e=>{ const b=e.target.closest('[data-exp]'); if(!b) return;
-    const [fmt,det]=b.dataset.exp.split('-');
-    if(R.mode==='harian') doExport(fmt,'harian',{date:R.date},b);
-    else doExport(fmt,det?'detail':'bulanan',{month:R.month,shift:R.shift},b);
-  };
+  $('#rctl').onclick=e=>{ const b=e.target.closest('[data-exp]'); if(b) doExport(b.dataset.exp,b); };
 }
 async function loadDaily(){
   const date=S.rekap.date, key='d:'+date;
@@ -366,10 +389,19 @@ async function loadDaily(){
     S.daily=d; renderDaily();
   }catch(e){ if(!S.cache[key]&&S.tab==='rekap'&&$('#rres')) $('#rres').innerHTML=failHtml(e); }
 }
+function dailyFiltered(){
+  const R=S.rekap,d=S.daily; if(!d) return [];
+  const q=R.q.trim().toLowerCase();
+  return d.rows.filter(r=>(!q||r.nama.toLowerCase().includes(q))&&(!R.st||(R.st==='Telat'?(r.record&&r.record.status==='Telat'):r.status===R.st)));
+}
+function monthlyFiltered(){
+  const R=S.rekap,d=S.monthly; if(!d) return [];
+  const q=R.q.trim().toLowerCase();
+  return d.rows.filter(r=>!q||r.nama.toLowerCase().includes(q));
+}
 function renderDaily(){
   const R=S.rekap,d=S.daily; if(!d||!$('#rres')) return;
-  const q=R.q.trim().toLowerCase();
-  const rows=d.rows.filter(r=>(!q||r.nama.toLowerCase().includes(q))&&(!R.st||(R.st==='Telat'?(r.record&&r.record.status==='Telat'):r.status===R.st)));
+  const rows=dailyFiltered();
   const s=d.summary;
   $('#rres').innerHTML=(d.libur?`<div class="alert warn">${esc(d.hari)} adalah hari libur.</div>`:'')+`<div class="stats"><div class="stat"><b>${s.hadir}</b><span>Hadir</span></div><div class="stat"><b>${s.telat}</b><span>Telat</span></div><div class="stat"><b>${s.belumAbsen}</b><span>Belum absen</span></div></div>`+
   (rows.length?`<div class="card" style="padding:4px 8px;overflow-x:auto"><table><tr><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Status</th><th></th></tr>`+
@@ -394,7 +426,7 @@ async function loadMonthly(){
 }
 function renderMonthly(){
   const R=S.rekap,d=S.monthly; if(!d||!$('#rres')||R.mode!=='bulanan') return;
-  const q=R.q.trim().toLowerCase(), rows=d.rows.filter(r=>!q||r.nama.toLowerCase().includes(q));
+  const rows=monthlyFiltered();
   const tot=rows.reduce((a,r)=>({hadir:a.hadir+r.hadir,telat:a.telat+r.telat}),{hadir:0,telat:0});
   $('#rres').innerHTML=statsHtml(tot)+(rows.length?`<div class="card" style="padding:4px 8px"><table><tr><th>Nama</th><th class="n">Hadir</th><th class="n">Telat</th></tr>`+
   rows.map(r=>`<tr class="click" data-act="detail" data-emp="${esc(r.idKaryawan)}"><td><b>${esc(r.nama)}</b><div class="muted sm">${esc(r.shift)}</div></td><td class="n">${r.hadir}</td><td class="n">${r.telat}</td></tr>`).join('')+
@@ -407,16 +439,39 @@ function rekapClick(e){
   if(act==='edit'){ const a=S.daily&&S.daily.rows.map(r=>r.record).find(x=>x&&x.id===el.dataset.id); if(a) correctForm({rec:a,onDone:loadDaily}); }
   if(act==='fill'){ const r=S.daily.rows.find(x=>x.idKaryawan===el.dataset.emp); correctForm({idKaryawan:r.idKaryawan,nama:r.nama,tanggal:S.daily.date,onDone:loadDaily}); }
 }
-async function doExport(fmt,kind,params,btn){
+function csvCell(v){
+  let t=String(v==null?'':v);
+  if(/^[=+\-@\t\r]/.test(t)) t="'"+t; // cegah formula injection saat dibuka di Excel/Sheets
+  return /[",\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;
+}
+function downloadCsv(filename,header,rows){
+  const csv='﻿'+[header].concat(rows).map(r=>r.map(csvCell).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=filename; document.body.appendChild(a); a.click(); a.remove(); toast('File CSV diunduh');
+}
+const RECHEAD=['Tanggal','Nama','Shift','Jam Masuk','Tgl Pulang','Jam Pulang','Total (menit)','Status','Alasan Terlambat','Dikoreksi','Catatan Koreksi'];
+const recRow=a=>[a.tanggal,a.nama,a.shift,a.jamMasuk,a.tglPulang,a.jamPulang,a.total==null?'':a.total,a.status,a.alasan,a.dikoreksi?'Ya':'',a.catatan];
+async function doExport(kind,btn){
+  const R=S.rekap;
   await busy(btn,async()=>{
-    btn.textContent='Memproses…';
     try{
-      const r=await api('api_adminExport',kind,params,fmt);
-      if(fmt==='csv'){
-        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([r.csv],{type:'text/csv;charset=utf-8'}));
-        a.download=r.filename; document.body.appendChild(a); a.click(); a.remove(); toast('File CSV diunduh');
-      }else openModal(`<h3>Export berhasil</h3><p class="muted">Sheet baru dibuat di Google Drive pemilik script.</p>
-        <div class="row"><button class="btn" data-close>Tutup</button><a class="btn btn-primary" style="text-decoration:none" href="${esc(r.url)}" target="_blank" rel="noopener">Buka Sheet</a></div>`);
+      if(kind==='harian'){
+        const d=S.daily; if(!d) return;
+        downloadCsv('Rekap_Harian_'+d.date+'.csv',['Tanggal','Nama','Shift','Jam Masuk','Jam Pulang','Status','Telat','Alasan Terlambat'],
+          dailyFiltered().map(r=>[d.date,r.nama,r.shift,r.record?r.record.jamMasuk:'',r.record?r.record.jamPulang:'',r.status,r.record&&r.record.status==='Telat'?'Ya':'',r.record?r.record.alasan:'']));
+      }else if(kind==='bulanan'){
+        const d=S.monthly; if(!d) return;
+        downloadCsv('Rekap_Bulanan_'+d.month+'.csv',['Nama','Shift','Hadir','Telat'],monthlyFiltered().map(r=>[r.nama,r.shift,r.hadir,r.telat]));
+      }else if(kind==='detail-all'){
+        btn.textContent='Memproses…';
+        const r=await api('api_adminMonthRecords',R.month,'');
+        downloadCsv('Detail_Absensi_'+R.month+'.csv',RECHEAD,r.rows.map(recRow));
+      }else{ // detail-one: satu karyawan
+        const D=S.detail; btn.textContent='Memproses…';
+        const r=await api('api_adminMonthRecords',D.month,D.id);
+        const nm=((D.data&&D.data.employee.nama)||'karyawan').replace(/[^\w\-]+/g,'_');
+        downloadCsv('Detail_'+nm+'_'+D.month+'.csv',RECHEAD,r.rows.map(recRow));
+      }
     }catch(e){ toast(e.error||'Export gagal.'); }
   });
 }
@@ -434,14 +489,14 @@ async function loadDetail(){
     $('#view').innerHTML=`<button class="btn xs" id="back" style="margin-bottom:10px">← Kembali</button>
     <div class="card"><b>${esc(d.employee.nama)}</b><div class="muted sm">${esc(d.employee.shift||'Tanpa shift')}</div>
     <label style="margin:10px 0 0">Bulan<input type="month" id="dm" value="${esc(d.month)}"></label>
-    <div class="row l"><button class="btn xs" id="dadd">+ Absen manual</button><button class="btn xs" data-exp="csv">CSV</button><button class="btn xs" data-exp="sheet">Sheet</button></div></div>
+    <div class="row l"><button class="btn xs" id="dadd">+ Absen manual</button><button class="btn xs" data-exp="detail-one">Export CSV</button></div></div>
     ${statsHtml(d)}<div id="dlist">${d.rows.length?d.rows.map(a=>recItem(a,true)).join(''):'<div class="muted center pad">Belum ada data bulan ini.</div>'}</div>`;
     $('#back').onclick=viewRekap;
     $('#dm').onchange=e=>{D.month=e.target.value||curMonth();loadDetail();};
     $('#dadd').onclick=()=>correctForm({idKaryawan:d.employee.id,nama:d.employee.nama,tanggal:today(),onDone:loadDetail});
     $('#view').onclick=e=>{
       const x=e.target.closest('[data-exp]');
-      if(x) return doExport(x.dataset.exp,'detail',{month:D.month,idKaryawan:D.id},x);
+      if(x) return doExport(x.dataset.exp,x);
       const b=e.target.closest('[data-act="edit"]');
       if(b){ const a=d.rows.find(r=>r.id===b.dataset.id); if(a) correctForm({rec:a,onDone:loadDetail}); }
     };
