@@ -52,8 +52,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pr);outline-offs
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mu);font-weight:600;font-size:12px}
 tr.click{cursor:pointer}td.n,th.n{text-align:right}
-nav{position:sticky;top:0;z-index:5;display:flex;background:var(--card);border:1px solid var(--bd);border-radius:12px;margin:0 12px 12px;overflow:hidden}
-nav button{flex:1;padding:14px 4px;border:0;background:transparent;color:var(--mu);font:inherit;font-size:13px;font-weight:600}
+nav{position:sticky;top:0;z-index:5;display:flex;overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:12px;margin:0 12px 12px;overflow:hidden}
+nav button{flex:1 0 auto;padding:14px 10px;border:0;background:transparent;color:var(--mu);font:inherit;font-size:13px;font-weight:600}
 nav button.on{color:var(--pr);box-shadow:inset 0 -3px 0 var(--pr)}
 .ovl{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:20;padding:6vh 12px 0;overflow:auto}
 .mdl{background:var(--card);width:100%;max-width:520px;border-radius:18px;padding:18px;margin-bottom:24px}
@@ -73,10 +73,10 @@ nav button.on{color:var(--pr);box-shadow:inset 0 -3px 0 var(--pr)}
 const KEY = 'absensi_sesi_v1';
 const TABS = [
   {id:'absen',label:'Absen'},{id:'riwayat',label:'Riwayat'},
-  {id:'rekap',label:'Rekap',admin:true},{id:'karyawan',label:'Karyawan',admin:true},{id:'akun',label:'Akun'}
+  {id:'rekap',label:'Rekap',admin:true},{id:'karyawan',label:'Karyawan',admin:true},{id:'shift',label:'Shift',admin:true},{id:'akun',label:'Akun'}
 ];
 const S = {token:null,me:null,offset:0,tab:'absen',tick:null,forceAlasan:false,hMonth:null,
-  rekap:{mode:'harian',date:'',month:'',shift:'',q:'',st:''},daily:null,monthly:null,detail:null,emps:null,empQ:'',cache:{}};
+  rekap:{mode:'harian',date:'',month:'',shift:'',q:'',st:''},daily:null,monthly:null,detail:null,emps:null,empQ:'',shifts:null,cache:{}};
 const $ = (s,r=document)=>r.querySelector(s);
 const esc = s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -100,7 +100,10 @@ const RPC={
   api_adminSaveEmployee:['api_admin_save_employee','p_token','p'],
   api_adminResetPassword:['api_admin_reset_password','p_token','p_id','p_pass'],
   api_adminCorrect:['api_admin_correct','p_token','p'],
-  api_adminMonthRecords:['api_admin_month_records','p_token','p_month','p_id']
+  api_adminMonthRecords:['api_admin_month_records','p_token','p_month','p_id'],
+  api_adminShifts:['api_admin_shifts','p_token'],
+  api_adminSaveShift:['api_admin_save_shift','p_token','p'],
+  api_adminDeleteShift:['api_admin_delete_shift','p_token','p_nama']
 };
 const ERRCODE={AB001:'AUTH',AB002:'ALASAN',AB004:'FORBID'};
 
@@ -175,7 +178,7 @@ function loadCachedUser(){
 function clearSession(){ try{localStorage.removeItem(KEY);sessionStorage.removeItem(KEY);}catch(e){} }
 function resetState(){
   stopTick(); S.token=null; S.me=null; S.tab='absen'; S.hMonth=null; S.forceAlasan=false;
-  S.rekap={mode:'harian',date:'',month:'',shift:'',q:'',st:''}; S.daily=S.monthly=S.detail=S.emps=null; S.empQ=''; S.cache={};
+  S.rekap={mode:'harian',date:'',month:'',shift:'',q:'',st:''}; S.daily=S.monthly=S.detail=S.emps=S.shifts=null; S.empQ=''; S.cache={};
 }
 function authLost(msg){ clearSession(); resetState(); closeModal(); renderLogin(); if(msg) toast(msg); }
 async function logout(){ try{ await call('api_logout',S.token);}catch(e){} clearSession(); resetState(); closeModal(); renderLogin(); }
@@ -242,7 +245,7 @@ function renderShell(){
 function showTab(id){
   S.tab=id; stopTick(); $('#view').onclick=null;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
-  ({absen:viewAbsen,riwayat:viewRiwayat,rekap:viewRekap,karyawan:viewKaryawan,akun:viewAkun})[id]();
+  ({absen:viewAbsen,riwayat:viewRiwayat,rekap:viewRekap,karyawan:viewKaryawan,shift:viewShift,akun:viewAkun})[id]();
 }
 const pw=(id,ac)=>`<span class="pw"><input id="${id}" type="password" autocomplete="${ac}"><button type="button" class="eye" data-eye="${id}">Lihat</button></span>`;
 document.addEventListener('click',e=>{
@@ -566,7 +569,7 @@ function empForm(e){
     if(e) p.aktif=$('#fa').checked; else{ p.username=$('#fu').value; p.password=$('#fp').value; }
     await busy(ev.target,async()=>{
       ev.target.textContent='Menyimpan…';
-      try{ await api('api_adminSaveEmployee',p); closeModal(); toast('Tersimpan'); viewKaryawan(); }
+      try{ await api('api_adminSaveEmployee',p); closeModal(); toast('Tersimpan'); S.shifts=null; viewKaryawan(); }
       catch(err){ showErr($('#ferr'),err.error||'Gagal menyimpan.'); }
     });
   };
@@ -581,6 +584,67 @@ function resetForm(e){
       ev.target.textContent='Memproses…';
       try{ await api('api_adminResetPassword',e.id,$('#rp').value); closeModal(); toast('Password direset'); }
       catch(err){ showErr($('#rerr'),err.error||'Gagal reset.'); }
+    });
+  };
+}
+
+/* ============ Shift (admin) ============ */
+async function viewShift(){
+  $('#view').innerHTML=`<div class="card"><div class="grid2" style="align-items:center"><div class="muted sm">Atur jam kerja tiap shift. Jam pulang lebih kecil dari jam masuk = shift lewat tengah malam.</div><button class="btn btn-primary" id="sadd">+ Tambah</button></div></div><div id="slist">${S.shifts?'':loadingHtml}</div>`;
+  $('#sadd').onclick=()=>shiftForm(null);
+  $('#slist').onclick=e=>{
+    const b=e.target.closest('[data-act]'); if(!b||!S.shifts) return;
+    const sh=S.shifts.find(x=>x.nama===b.dataset.n); if(!sh) return;
+    if(b.dataset.act==='edit') shiftForm(sh);
+    if(b.dataset.act==='del') shiftDelete(sh);
+  };
+  const had=!!S.shifts; if(had) renderShifts();
+  try{ S.shifts=(await api('api_adminShifts')).shifts; if(S.tab==='shift') renderShifts(); }
+  catch(e){ if(!had&&S.tab==='shift'&&$('#slist')) $('#slist').innerHTML=failHtml(e); }
+}
+function renderShifts(){
+  const box=$('#slist'); if(!box||!S.shifts) return;
+  const t=(a,b)=>a&&b?esc(a)+'–'+esc(b):'ikut hari kerja';
+  box.innerHTML=S.shifts.length?S.shifts.map(s=>`<div class="item"><div class="top"><b>${esc(s.nama)}</b><span class="badge">${s.dipakai} karyawan</span></div>
+  <div class="sub">Hari kerja ${esc(s.masuk)}–${esc(s.pulang)} · Toleransi ${s.tol} menit</div>
+  <div class="sub">Sabtu ${t(s.sabtuMasuk,s.sabtuPulang)} · Minggu ${t(s.mingguMasuk,s.mingguPulang)}</div>
+  <div class="row"><button class="btn xs" data-act="del" data-n="${esc(s.nama)}">Hapus</button><button class="btn xs" data-act="edit" data-n="${esc(s.nama)}">Ubah</button></div></div>`).join('')
+  :'<div class="muted center pad">Belum ada shift. Ketuk + Tambah.</div>';
+}
+function shiftChanged(){ S.shifts=null; S.emps=null; S.monthly=null; S.daily=null; S.cache={}; }
+function shiftForm(s){
+  openModal(`<h3>${s?'Ubah shift':'Tambah shift'}</h3>
+  <label>Nama shift<input id="sn" maxlength="30" value="${esc(s?s.nama:'')}" placeholder="Mis. Pagi"></label>
+  <div class="grid2"><label>Jam masuk<input type="time" id="sm" value="${esc(s?s.masuk:'')}"></label><label>Jam pulang<input type="time" id="sp" value="${esc(s?s.pulang:'')}"></label></div>
+  <label>Toleransi terlambat (menit)<input type="number" id="st" min="0" max="120" inputmode="numeric" value="${s?s.tol:10}"></label>
+  <div class="muted sm" style="margin:4px 0 6px">Sabtu — kosongkan keduanya jika sama dengan hari kerja</div>
+  <div class="grid2"><label>Masuk<input type="time" id="ssm" value="${esc(s?s.sabtuMasuk:'')}"></label><label>Pulang<input type="time" id="ssp" value="${esc(s?s.sabtuPulang:'')}"></label></div>
+  <div class="muted sm" style="margin:4px 0 6px">Minggu — kosongkan keduanya jika sama dengan hari kerja</div>
+  <div class="grid2"><label>Masuk<input type="time" id="sum" value="${esc(s?s.mingguMasuk:'')}"></label><label>Pulang<input type="time" id="sup" value="${esc(s?s.mingguPulang:'')}"></label></div>
+  ${s?'<div class="muted sm">Mengganti nama shift otomatis ikut ke karyawan yang memakainya. Riwayat lama tetap memakai nama lama.</div>':''}
+  <div id="serr" class="err" hidden></div>
+  <div class="row"><button class="btn" data-close>Batal</button><button class="btn btn-primary" id="ssave">Simpan</button></div>`);
+  $('#ssave').onclick=async ev=>{
+    $('#serr').hidden=true;
+    const p={lama:s?s.nama:'',nama:$('#sn').value,masuk:$('#sm').value,pulang:$('#sp').value,tol:$('#st').value,
+      sabtuMasuk:$('#ssm').value,sabtuPulang:$('#ssp').value,mingguMasuk:$('#sum').value,mingguPulang:$('#sup').value};
+    await busy(ev.target,async()=>{
+      ev.target.textContent='Menyimpan…';
+      try{ await api('api_adminSaveShift',p); closeModal(); toast('Shift tersimpan'); shiftChanged(); viewShift(); }
+      catch(err){ showErr($('#serr'),err.error||'Gagal menyimpan.'); }
+    });
+  };
+}
+function shiftDelete(s){
+  openModal(`<h3>Hapus shift?</h3><p class="muted">Shift <b>${esc(s.nama)}</b> akan dihapus.${s.dipakai?` Masih dipakai ${s.dipakai} karyawan, pindahkan dulu karyawannya.`:''}</p>
+  <div id="derr" class="err" hidden></div>
+  <div class="row"><button class="btn" data-close>Batal</button><button class="btn btn-danger" id="dyes">Ya, hapus</button></div>`);
+  $('#dyes').onclick=async ev=>{
+    $('#derr').hidden=true;
+    await busy(ev.target,async()=>{
+      ev.target.textContent='Menghapus…';
+      try{ await api('api_adminDeleteShift',s.nama); closeModal(); toast('Shift dihapus'); shiftChanged(); viewShift(); }
+      catch(err){ showErr($('#derr'),err.error||'Gagal menghapus.'); }
     });
   };
 }
